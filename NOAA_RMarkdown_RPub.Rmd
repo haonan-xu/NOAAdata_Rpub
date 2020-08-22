@@ -5,20 +5,68 @@ date: "8/22/2020"
 output: html_document
 ---
 
-### Synopsis
+## Synopsis
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ******
 
+The [NOAA Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) can be downloaded here.
 
-### Data Processing
+## Data Processing
 ### Reading Data
 
-This 
+```{r LoadPackage, message=FALSE}
+library(tidyverse)
+library(magrittr)
+library(lattice)
+```
 
+This portion of the code downloads the NOAA data and processes it
+
+```{r ReadData, cache=TRUE}
+filelink <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+
+download.file(filelink,"StormData.csv.bz2", method = "curl")
+
+stormdata <- read.csv("StormData.csv.bz2")
+
+stormdata2 <- stormdata
+stormdata2 <- stormdata2 %>%
+  mutate(Time = sub(" 0:00:00", "", paste(BGN_DATE,BGN_TIME))) %>%
+  mutate(Time = as.POSIXct(Time,format = "%m/%d/%Y %H%M")) %>%
+  select(Time,TIME_ZONE,STATE,EVTYPE,FATALITIES,INJURIES,
+                                   PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP) %>%
+  filter(!grepl("summary",stormdata2$EVTYPE,ignore.case = T)) %>%
+  mutate(EVTYPE = as.factor(EVTYPE))
+
+remove(stormdata)
+```
+
+The following section processes the storm data for calculations
 ```{r}
+## Data contain summaries as observations, i.e. obs. 278098 is "Summary: Nov. 16"
+## The filter() function above remove these observations 
+
+exponents <- unique(c(stormdata2$PROPDMGEXP,stormdata2$CROPDMGEXP))
+exp_value <- 10**c(3,6,0,9,6,NA,0,5,6,NA,4,2,3,NA,7,NA,NA,1,8,3)
+
+stormdata2$CROPDMGEXP[stormdata2$CROPDMGEXP %in% exponents] <- exp_value[match(
+  stormdata2$CROPDMGEXP,exponents, nomatch = NA
+)]
+
+stormdata2$PROPDMGEXP[stormdata2$PROPDMGEXP %in% exponents] <- exp_value[match(
+  stormdata2$PROPDMGEXP,exponents, nomatch = NA
+)]
+
+stormdata2$PROPDMGEXP <- as.numeric(stormdata2$PROPDMGEXP)
+stormdata2$CROPDMGEXP <- as.numeric(stormdata2$CROPDMGEXP)
+
+stormdata2 <- stormdata2 %>% mutate(TOTAL = PROPDMG * PROPDMGEXP + CROPDMG * CROPDMGEXP)
+## unknown exponents like "+", "?", "h", "H", or "-" were also introduced in the data
+## For the purpose of this study, they are assumed to be NA 
+## k, K == 1000; m, M == 10**6; B == 10**9; 7 == 10** 7 etc
 
 ```
 

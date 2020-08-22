@@ -369,20 +369,62 @@ summary {
 </div>
 
 
-<div id="synopsis" class="section level3">
-<h3>Synopsis</h3>
+<div id="synopsis" class="section level2">
+<h2>Synopsis</h2>
 <hr />
+<p>The <a href="https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2">NOAA Storm Data</a> can be downloaded here.</p>
 </div>
-<div id="data-processing" class="section level3">
-<h3>Data Processing</h3>
-</div>
+<div id="data-processing" class="section level2">
+<h2>Data Processing</h2>
 <div id="reading-data" class="section level3">
 <h3>Reading Data</h3>
-<p>This</p>
+<pre class="r"><code>library(tidyverse)
+library(magrittr)
+library(lattice)</code></pre>
+<p>This portion of the code downloads the NOAA data and processes it</p>
+<pre class="r"><code>filelink &lt;- &quot;https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2&quot;
+
+download.file(filelink,&quot;StormData.csv.bz2&quot;, method = &quot;curl&quot;)
+
+stormdata &lt;- read.csv(&quot;StormData.csv.bz2&quot;)
+
+stormdata2 &lt;- stormdata
+stormdata2 &lt;- stormdata2 %&gt;%
+  mutate(Time = sub(&quot; 0:00:00&quot;, &quot;&quot;, paste(BGN_DATE,BGN_TIME))) %&gt;%
+  mutate(Time = as.POSIXct(Time,format = &quot;%m/%d/%Y %H%M&quot;)) %&gt;%
+  select(Time,TIME_ZONE,STATE,EVTYPE,FATALITIES,INJURIES,
+                                   PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP) %&gt;%
+  filter(!grepl(&quot;summary&quot;,stormdata2$EVTYPE,ignore.case = T)) %&gt;%
+  mutate(EVTYPE = as.factor(EVTYPE))
+
+remove(stormdata)</code></pre>
+<p>The following section processes the storm data for calculations</p>
+<pre class="r"><code>## Data contain summaries as observations, i.e. obs. 278098 is &quot;Summary: Nov. 16&quot;
+## The filter() function above remove these observations 
+
+exponents &lt;- unique(c(stormdata2$PROPDMGEXP,stormdata2$CROPDMGEXP))
+exp_value &lt;- 10**c(3,6,0,9,6,NA,0,5,6,NA,4,2,3,NA,7,NA,NA,1,8,3)
+
+stormdata2$CROPDMGEXP[stormdata2$CROPDMGEXP %in% exponents] &lt;- exp_value[match(
+  stormdata2$CROPDMGEXP,exponents, nomatch = NA
+)]
+
+stormdata2$PROPDMGEXP[stormdata2$PROPDMGEXP %in% exponents] &lt;- exp_value[match(
+  stormdata2$PROPDMGEXP,exponents, nomatch = NA
+)]
+
+stormdata2$PROPDMGEXP &lt;- as.numeric(stormdata2$PROPDMGEXP)
+stormdata2$CROPDMGEXP &lt;- as.numeric(stormdata2$CROPDMGEXP)
+
+stormdata2 &lt;- stormdata2 %&gt;% mutate(TOTAL = PROPDMG * PROPDMGEXP + CROPDMG * CROPDMGEXP)
+## unknown exponents like &quot;+&quot;, &quot;?&quot;, &quot;h&quot;, &quot;H&quot;, or &quot;-&quot; were also introduced in the data
+## For the purpose of this study, they are assumed to be NA 
+## k, K == 1000; m, M == 10**6; B == 10**9; 7 == 10** 7 etc</code></pre>
 <hr />
 </div>
 <div id="results" class="section level3">
 <h3>Results</h3>
+</div>
 </div>
 
 
