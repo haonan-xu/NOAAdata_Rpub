@@ -1,0 +1,34 @@
+---
+title: "Major Weather Events from US NOAA Data"
+author: "Haonan Xu"
+date: "8/22/2020"
+output: html_document
+---
+
+### Synopsis
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+******
+
+
+### Data Processing
+### Reading Data
+
+This 
+
+```{r}
+
+```
+
+******
+
+
+### Results
+
+
+```{r }
+
+```
+
