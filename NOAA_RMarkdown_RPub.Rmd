@@ -5,7 +5,7 @@ date: "8/22/2020"
 output: html_document
 ---
 
-## Synopsis
+### Synopsis
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -14,13 +14,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 The [NOAA Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) can be downloaded here.
 
-## Data Processing
-### Reading Data
+### Data Processing
+#### Reading Data
 
 ```{r LoadPackage, message=FALSE}
 library(tidyverse)
 library(magrittr)
 library(lattice)
+library(knitr)
 ```
 
 This portion of the code downloads the NOAA data and processes it
@@ -52,6 +53,9 @@ The following section processes the storm data for calculations
 exponents <- unique(c(stormdata2$PROPDMGEXP,stormdata2$CROPDMGEXP))
 exp_value <- 10**c(3,6,0,9,6,NA,0,5,6,NA,4,2,3,NA,7,NA,NA,1,8,3)
 
+## Exponents of the economic damage are noted as "K", "M", "B", etc. 
+## The above lines converts it to numeric representations 
+
 stormdata2$CROPDMGEXP[stormdata2$CROPDMGEXP %in% exponents] <- exp_value[match(
   stormdata2$CROPDMGEXP,exponents, nomatch = NA
 )]
@@ -63,20 +67,69 @@ stormdata2$PROPDMGEXP[stormdata2$PROPDMGEXP %in% exponents] <- exp_value[match(
 stormdata2$PROPDMGEXP <- as.numeric(stormdata2$PROPDMGEXP)
 stormdata2$CROPDMGEXP <- as.numeric(stormdata2$CROPDMGEXP)
 
-stormdata2 <- stormdata2 %>% mutate(TOTAL = PROPDMG * PROPDMGEXP + CROPDMG * CROPDMGEXP)
+stormdata2 <- stormdata2 %>% mutate(PROPTOTAL = PROPDMG * PROPDMGEXP, CROPTOTAL = CROPDMG * CROPDMGEXP, MONTH = months(stormdata2$Time)) 
+
 ## unknown exponents like "+", "?", "h", "H", or "-" were also introduced in the data
 ## For the purpose of this study, they are assumed to be NA 
 ## k, K == 1000; m, M == 10**6; B == 10**9; 7 == 10** 7 etc
 
 ```
 
-******
-
-
-### Results
-
-
-```{r }
+The following section calculates the casualty by weather events
+```{r Casualty}
+casualty <- stormdata2 %>% group_by(EVTYPE) %>%
+  summarise(count = n(),tot_fatality = sum(FATALITIES), tot_injury = sum(INJURIES),
+            mean_fatality = mean(FATALITIES), mean_injury = mean(INJURIES),
+            total = tot_fatality + tot_injury,
+            .groups = "drop_last") %>%
+  ungroup() %>%
+  arrange(desc(total))
 
 ```
 
+The following section calculates the damage by weather events
+```{r Damage}
+
+## Damage is recorded in millions of dollars 
+damage <- stormdata2 %>% group_by(EVTYPE) %>%
+  summarise(count = n(), tot_prop = sum(PROPTOTAL)/10**6,
+            tot_crop = sum(CROPTOTAL)/10**6, mean_prop = mean(PROPTOTAL)/10**6,
+            mean_crop = mean(CROPTOTAL)/10**6, total = tot_crop + tot_prop,
+            .groups = "drop_last") %>%
+  ungroup() %>%
+  arrange(desc(total))
+```
+******
+
+
+#### Results
+In the U.S., the weather event most harmful to public health is *`r casualty$EVTYPE[1]`*, and the one with greatest economic consequences is *`r damage$EVTYPE[1]`*. To compute for the threat to public health, the total fatalities and total injuries are considered; for assessing economic damage, total property damage and total crop damage are added. 
+
+```{r table}
+casualty_table <- head(casualty,3) %>%
+  mutate(Ranking = row_number(),Total_Fatality = tot_fatality,
+         Total_Injury = tot_injury, Total = total, Event = EVTYPE) %>%
+  select(Ranking, Event, Total_Injury, Total_Fatality, Total)
+kable(casualty_table, align = "c", caption = "Table 1. Weather Events with the most Casualty")
+
+damage_table <- head(damage,3) %>%
+  mutate(Ranking = row_number(), Total_Property = tot_prop, Total_Crop = tot_crop,
+         Total = total, Event = EVTYPE) %>%
+  select(Ranking, Event, Total_Property, Total_Crop,Total)
+kable(damage_table, align = "c", caption = "Table 2. Weather Events with the most Economic Damage ($ Mil)")
+
+```
+
+```{r Plotting}
+
+par(mfrow = c(2,2))
+flood <- stormdata2[which(stormdata2$EVTYPE == "FLOOD"),]
+flood <- mutate(flood, casualty = FATALITIES + INJURIES)
+hist(flood$Time, freq = T, breaks = 12, main = "Histogram of Flood Frequency",
+     xlab = "Time")
+
+tornado <- stormdata2[which(stormdata2$EVTYPE == "TORNADO"),]
+hist(tornado$Time, freq = T, breaks = 12, main = "Histogram of Tornado Frequency",
+     xlab = "Time")
+
+```
