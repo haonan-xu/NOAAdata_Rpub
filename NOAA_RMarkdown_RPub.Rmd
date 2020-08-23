@@ -4,17 +4,18 @@ author: "Haonan Xu"
 date: "8/22/2020"
 output: html_document
 ---
-
 ### Synopsis
+
+******
+
+### Background
+The [NOAA Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) can be downloaded here.
+
+### Data Processing
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-******
-
-The [NOAA Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) can be downloaded here.
-
-### Data Processing
 #### Reading Data
 
 ```{r LoadPackage, message=FALSE}
@@ -22,6 +23,7 @@ library(tidyverse)
 library(magrittr)
 library(lattice)
 library(knitr)
+library(lubridate)
 ```
 
 This portion of the code downloads the NOAA data and processes it
@@ -35,16 +37,17 @@ stormdata <- read.csv("StormData.csv.bz2")
 
 stormdata2 <- stormdata
 stormdata2 <- stormdata2 %>%
-  mutate(Time = sub(" 0:00:00", "", paste(BGN_DATE,BGN_TIME))) %>%
-  mutate(Time = as.POSIXct(Time,format = "%m/%d/%Y %H%M")) %>%
+  mutate(Time = sub(" 0:00:00", "", BGN_DATE)) %>%
+  mutate(Time = as.POSIXct(Time,format = "%m/%d/%Y")) %>%
   select(Time,TIME_ZONE,STATE,EVTYPE,FATALITIES,INJURIES,
                                    PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP) %>%
   filter(!grepl("summary",stormdata2$EVTYPE,ignore.case = T)) %>%
   mutate(EVTYPE = as.factor(EVTYPE))
 
-remove(stormdata)
+remove(stormdata) # Original data is removed for memory efficiency
 ```
 
+#### Data Processing
 The following section processes the storm data for calculations
 ```{r}
 ## Data contain summaries as observations, i.e. obs. 278098 is "Summary: Nov. 16"
@@ -67,7 +70,10 @@ stormdata2$PROPDMGEXP[stormdata2$PROPDMGEXP %in% exponents] <- exp_value[match(
 stormdata2$PROPDMGEXP <- as.numeric(stormdata2$PROPDMGEXP)
 stormdata2$CROPDMGEXP <- as.numeric(stormdata2$CROPDMGEXP)
 
-stormdata2 <- stormdata2 %>% mutate(PROPTOTAL = PROPDMG * PROPDMGEXP, CROPTOTAL = CROPDMG * CROPDMGEXP, MONTH = months(stormdata2$Time)) 
+stormdata2 <- stormdata2 %>% 
+  mutate(PROPTOTAL = PROPDMG * PROPDMGEXP/10**6,
+         CROPTOTAL = CROPDMG * CROPDMGEXP/10**6, DAMAGETOTAL = CROPTOTAL + PROPTOTAL,
+         CASUALTY = FATALITIES + INJURIES, YEAR = year(Time))
 
 ## unknown exponents like "+", "?", "h", "H", or "-" were also introduced in the data
 ## For the purpose of this study, they are assumed to be NA 
@@ -78,12 +84,13 @@ stormdata2 <- stormdata2 %>% mutate(PROPTOTAL = PROPDMG * PROPDMGEXP, CROPTOTAL 
 The following section calculates the casualty by weather events
 ```{r Casualty}
 casualty <- stormdata2 %>% group_by(EVTYPE) %>%
-  summarise(count = n(),tot_fatality = sum(FATALITIES), tot_injury = sum(INJURIES),
-            mean_fatality = mean(FATALITIES), mean_injury = mean(INJURIES),
-            total = tot_fatality + tot_injury,
+  summarise(count = n(), Total_Fatality = sum(FATALITIES), 
+            Total_Injury = sum(INJURIES), Mean_Fatality = mean(FATALITIES),
+            Mean_injury = mean(INJURIES),
+            Total = Total_Fatality + Total_Injury,
             .groups = "drop_last") %>%
   ungroup() %>%
-  arrange(desc(total))
+  arrange(desc(Total))
 
 ```
 
@@ -92,44 +99,79 @@ The following section calculates the damage by weather events
 
 ## Damage is recorded in millions of dollars 
 damage <- stormdata2 %>% group_by(EVTYPE) %>%
-  summarise(count = n(), tot_prop = sum(PROPTOTAL)/10**6,
-            tot_crop = sum(CROPTOTAL)/10**6, mean_prop = mean(PROPTOTAL)/10**6,
-            mean_crop = mean(CROPTOTAL)/10**6, total = tot_crop + tot_prop,
+  summarise(count = n(), Total_Property = sum(PROPTOTAL),
+            Total_Crop = sum(CROPTOTAL), Mean_Property = mean(PROPTOTAL),
+            Mean_Crop = mean(CROPTOTAL), Total = Total_Property + Total_Crop,
             .groups = "drop_last") %>%
   ungroup() %>%
-  arrange(desc(total))
+  arrange(desc(Total))
 ```
 ******
 
 
 #### Results
-In the U.S., the weather event most harmful to public health is *`r casualty$EVTYPE[1]`*, and the one with greatest economic consequences is *`r damage$EVTYPE[1]`*. To compute for the threat to public health, the total fatalities and total injuries are considered; for assessing economic damage, total property damage and total crop damage are added. 
+In the U.S., the weather event most harmful to public health is **`r casualty$EVTYPE[1]`**, and the one with greatest economic consequences is **`r damage$EVTYPE[1]`**. To compute for the threat to public health, the total fatalities and total injuries are considered; for assessing economic damage, total property damage and total crop damage are added. 
 
 ```{r table}
 casualty_table <- head(casualty,3) %>%
-  mutate(Ranking = row_number(),Total_Fatality = tot_fatality,
-         Total_Injury = tot_injury, Total = total, Event = EVTYPE) %>%
+  mutate(Ranking = row_number(), Event = EVTYPE) %>%
   select(Ranking, Event, Total_Injury, Total_Fatality, Total)
-kable(casualty_table, align = "c", caption = "Table 1. Weather Events with the most Casualty")
+
 
 damage_table <- head(damage,3) %>%
-  mutate(Ranking = row_number(), Total_Property = tot_prop, Total_Crop = tot_crop,
-         Total = total, Event = EVTYPE) %>%
+  mutate(Ranking = row_number(), Event = EVTYPE) %>%
   select(Ranking, Event, Total_Property, Total_Crop,Total)
-kable(damage_table, align = "c", caption = "Table 2. Weather Events with the most Economic Damage ($ Mil)")
+
+#Formatting the table by reducing line length
+damage_table$Event <- gsub("/TYPHOON", "/ TYPHOON", damage_table$Event)
+
+kables(list(
+  kable(casualty_table, align = "c", caption = "Table 1. Weather Events with the most Casualty"),
+  kable(damage_table, align = "c", caption = "Table 2. Weather Events with the most Economic Damage ($ Mil)")
+))
 
 ```
 
-```{r Plotting}
+```{r Lattice}
+
+plotting <- stormdata2 %>% group_by(EVTYPE) %>%
+  mutate(Event_Count = n()) %>%
+  arrange(desc(Event_Count))
+
+most_freq <- as.character(unique(plotting$EVTYPE)[1:20])
+
+plotting <- plotting %>%
+  filter(EVTYPE %in% most_freq) %>%
+  mutate(EVTYPE = droplevels(EVTYPE)) %>%
+  select(Time, YEAR, STATE, EVTYPE, CASUALTY, DAMAGETOTAL)
+
+plotting <- plotting %>%
+  group_by(EVTYPE,YEAR) %>%
+  summarise(EVCOUNT = n(), CASUALTY_Y = sum(CASUALTY,na.rm = T), 
+            DAMAGE_Y = sum(DAMAGETOTAL,na.rm = T),
+            .groups = "drop_last") %>%
+  ungroup()
+
+xyplot(CASUALTY_Y ~ YEAR | EVTYPE, plotting, type = "l",
+       par.strip.text = list(cex = 0.4),
+       ylab = "Total Annual Casualty (person)")
+xyplot(DAMAGE_Y ~ YEAR | EVTYPE, plotting,type = "l",
+       par.strip.text = list(cex = 0.4),
+       ylab = "Total Annual Damage (Millions USD) ")
+  
+```
+
+```{r Histogram}
 
 par(mfrow = c(2,2))
 flood <- stormdata2[which(stormdata2$EVTYPE == "FLOOD"),]
-flood <- mutate(flood, casualty = FATALITIES + INJURIES)
 hist(flood$Time, freq = T, breaks = 12, main = "Histogram of Flood Frequency",
      xlab = "Time")
 
 tornado <- stormdata2[which(stormdata2$EVTYPE == "TORNADO"),]
+tornado <- mutate(tornado, casualty = FATALITIES + INJURIES)
 hist(tornado$Time, freq = T, breaks = 12, main = "Histogram of Tornado Frequency",
      xlab = "Time")
 
 ```
+
