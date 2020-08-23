@@ -1,15 +1,26 @@
 ---
-title: "Major Weather Events from US NOAA Data"
-author: "Haonan Xu"
+title: "Flood and Tornado are the most Detrimental Weather Events in U.S. "
+author:
 date: "8/22/2020"
 output: html_document
 ---
+
+******
 ### Synopsis
+In this report, we aim to investigate the severity of extreme weather events in U.S. history. From NOAA Storm Data, we calculated the annual total casualties (fatality and injuries) and economic consequence (property damage and crop damage) for each extreme weather event. Based on our analysis, in the U.S., the weather event that is most harmful to public health is *Tornado*, and the one with greatest economic consequences is *Flood*. Furthermore, both flood and tornado occurrences are on the raise. 
+
 
 ******
 
 ### Background
 The [NOAA Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) can be downloaded here.
+
+The goal of this project is to study the NOAA Storm Database and answer:
+
+
+1. Which type of weather event is most harmful to public health in U.S.?
+
+2. Which type of weather event is most damaging to economy in U.S.?
 
 ### Data Processing
 ```{r setup, include=FALSE}
@@ -36,6 +47,10 @@ download.file(filelink,"StormData.csv.bz2", method = "curl")
 stormdata <- read.csv("StormData.csv.bz2")
 
 stormdata2 <- stormdata
+
+
+## Data contain summaries as observations, i.e. obs. 278098 is "Summary: Nov. 16"
+## The filter() function below removes these observations 
 stormdata2 <- stormdata2 %>%
   mutate(Time = sub(" 0:00:00", "", BGN_DATE)) %>%
   mutate(Time = as.POSIXct(Time,format = "%m/%d/%Y")) %>%
@@ -49,15 +64,17 @@ remove(stormdata) # Original data is removed for memory efficiency
 
 #### Data Processing
 The following section processes the storm data for calculations
-```{r}
-## Data contain summaries as observations, i.e. obs. 278098 is "Summary: Nov. 16"
-## The filter() function above remove these observations 
+```{r EconomicDamage}
+
+## Exponents of the economic damage are noted as "K", "M", "B", etc. 
+## The following lines converts it to numeric representations 
 
 exponents <- unique(c(stormdata2$PROPDMGEXP,stormdata2$CROPDMGEXP))
 exp_value <- 10**c(3,6,0,9,6,NA,0,5,6,NA,4,2,3,NA,7,NA,NA,1,8,3)
 
-## Exponents of the economic damage are noted as "K", "M", "B", etc. 
-## The above lines converts it to numeric representations 
+## unknown exponents like "+", "?", "h", "H", or "-" were also introduced in the data
+## For the purpose of this study, they are assumed to be NA 
+## k, K == 1000; m, M == 10**6; B == 10**9; 7 == 10** 7 etc
 
 stormdata2$CROPDMGEXP[stormdata2$CROPDMGEXP %in% exponents] <- exp_value[match(
   stormdata2$CROPDMGEXP,exponents, nomatch = NA
@@ -70,14 +87,14 @@ stormdata2$PROPDMGEXP[stormdata2$PROPDMGEXP %in% exponents] <- exp_value[match(
 stormdata2$PROPDMGEXP <- as.numeric(stormdata2$PROPDMGEXP)
 stormdata2$CROPDMGEXP <- as.numeric(stormdata2$CROPDMGEXP)
 
+## The total property damage PROPTOTAL and total crop damage CROPTOTAL are noted
+## in the units of millions of dollars
 stormdata2 <- stormdata2 %>% 
   mutate(PROPTOTAL = PROPDMG * PROPDMGEXP/10**6,
          CROPTOTAL = CROPDMG * CROPDMGEXP/10**6, DAMAGETOTAL = CROPTOTAL + PROPTOTAL,
          CASUALTY = FATALITIES + INJURIES, YEAR = year(Time))
 
-## unknown exponents like "+", "?", "h", "H", or "-" were also introduced in the data
-## For the purpose of this study, they are assumed to be NA 
-## k, K == 1000; m, M == 10**6; B == 10**9; 7 == 10** 7 etc
+
 
 ```
 
@@ -112,6 +129,8 @@ damage <- stormdata2 %>% group_by(EVTYPE) %>%
 #### Results
 In the U.S., the weather event most harmful to public health is **`r casualty$EVTYPE[1]`**, and the one with greatest economic consequences is **`r damage$EVTYPE[1]`**. To compute for the threat to public health, the total fatalities and total injuries are considered; for assessing economic damage, total property damage and total crop damage are added. 
 
+
+##### Result Table
 ```{r table}
 casualty_table <- head(casualty,3) %>%
   mutate(Ranking = row_number(), Event = EVTYPE) %>%
@@ -132,6 +151,8 @@ kables(list(
 
 ```
 
+
+##### Plotting Weather Events by Time
 ```{r Lattice}
 
 plotting <- stormdata2 %>% group_by(EVTYPE) %>%
@@ -152,26 +173,31 @@ plotting <- plotting %>%
             .groups = "drop_last") %>%
   ungroup()
 
-xyplot(CASUALTY_Y ~ YEAR | EVTYPE, plotting, type = "l",
+xyplot(CASUALTY_Y + DAMAGE_Y/10 ~ YEAR | EVTYPE, plotting, type = "l",
        par.strip.text = list(cex = 0.4),
-       ylab = "Total Annual Casualty (person)")
-xyplot(DAMAGE_Y ~ YEAR | EVTYPE, plotting,type = "l",
-       par.strip.text = list(cex = 0.4),
-       ylab = "Total Annual Damage (Millions USD) ")
-  
+       auto.key = list(space = "top", points = F, lines = T,
+                       text = c("Casualty (Person)", "Damage (10s of million USD)")),
+       ylab = "Total Annual Casualty / Damage")
+
 ```
 
+
+Figure 1. The panel plot shows the total annual casualty  *(shown in blue)* and the total economic damage *(shown in magenta)* for the 20 most frequent extreme weather events from 1950 to 2011
+
+##### Plotting Occurance Trend for Flood and Tornado
 ```{r Histogram}
 
-par(mfrow = c(2,2))
+par(mfrow = c(1,2))
 flood <- stormdata2[which(stormdata2$EVTYPE == "FLOOD"),]
-hist(flood$Time, freq = T, breaks = 12, main = "Histogram of Flood Frequency",
+hist(flood$Time, freq = T, breaks = 12, main = "Historic Flood Frequency",
      xlab = "Time")
 
 tornado <- stormdata2[which(stormdata2$EVTYPE == "TORNADO"),]
 tornado <- mutate(tornado, casualty = FATALITIES + INJURIES)
-hist(tornado$Time, freq = T, breaks = 12, main = "Histogram of Tornado Frequency",
+hist(tornado$Time, freq = T, breaks = 12, main = "Historic Tornado Frequency",
      xlab = "Time")
 
 ```
 
+
+Figure 2. The histograms show the occurrence frequency for flood *(left)* and tornado *(right)* from available NOAA record
